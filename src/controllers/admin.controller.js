@@ -38,11 +38,11 @@ export async function obtenerTodasExplicacionesAdmin(req, res) {
 
           if (actividad.pendientes && Array.isArray(actividad.pendientes)) {
             actividad.pendientes.forEach((pendiente) => {
-              
+
               // DATOS IMPORTANTES:
               // - descripcion: lo que se hará en el día (mañana/planeación)
               // - queHizo: lo que se hizo en la tarde (ejecución/realizado)
-              
+
               // Explicacion actual (queHizo - lo que se hizo en la tarde)
               if (pendiente.explicacionVoz && pendiente.explicacionVoz.texto) {
                 usuarioData.explicaciones.push({
@@ -157,7 +157,7 @@ export async function obtenerTodasExplicacionesAdmin(req, res) {
         usuarioData.validadas = usuarioData.explicaciones.filter(e => e.validada).length;
         usuarioData.rechazadas = usuarioData.explicaciones.filter(e => !e.validada && e.razon).length;
         usuarioData.registrosAutomaticos = usuarioData.explicaciones.filter(e => e.esRegistroAutomatico).length;
-        
+
         // Ordenar por fecha (más reciente primero)
         usuarioData.explicaciones.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
       }
@@ -299,7 +299,7 @@ export async function obtenerExplicacionesPorActividad(req, res) {
                 sessionId: hist.sessionId,
                 resultado: hist.resultado || {}
               }));
-              
+
               // Si no tiene explicacion actual pero tiene historial, contar como tarea con explicacion
               if (!tareaData.tieneExplicacion && tareaData.historialExplicaciones.length > 0) {
                 actividadData.tareasConExplicacion++;
@@ -316,7 +316,7 @@ export async function obtenerExplicacionesPorActividad(req, res) {
         actividadData.tareas.sort((a, b) => {
           if (a.tieneExplicacion && !b.tieneExplicacion) return -1;
           if (!a.tieneExplicacion && b.tieneExplicacion) return 1;
-          
+
           const prioridadOrden = { 'URGENTE': 1, 'ALTA': 2, 'MEDIA': 3, 'BAJA': 4 };
           return (prioridadOrden[a.prioridad] || 5) - (prioridadOrden[b.prioridad] || 5);
         });
@@ -396,7 +396,7 @@ export async function obtenerExplicacionesPorPendiente(req, res) {
             fechaFinTerminada: pendienteEncontrado.fechaFinTerminada,
             tags: pendienteEncontrado.tags || [],
             requiereAtencion: pendienteEncontrado.requiereAtencion || false,
-            
+
             actividad: {
               actividadId: actividad.actividadId,
               titulo: actividad.titulo || 'Sin título',
@@ -404,14 +404,14 @@ export async function obtenerExplicacionesPorPendiente(req, res) {
               fecha: actividad.fecha || 'Sin fecha',
               colaboradores: actividad.colaboradoresEmails || []
             },
-            
+
             usuario: {
               id: documento._id.toString(),
               odooUserId: documento.odooUserId,
               email: documento.emailUsuario || 'No registrado',
               nombre: documento.nombreUsuario || `Usuario ${documento.odooUserId.substring(0, 6)}`
             },
-            
+
             explicacionActual: null,
             historialExplicaciones: [],
             totalExplicaciones: 0
@@ -469,25 +469,25 @@ export async function obtenerExplicacionesPorPendiente(req, res) {
 export async function obtenerExplicacionesBasicas(req, res) {
   try {
     console.log("📊 Obteniendo datos básicos...");
-    
+
     const conteo = await ActividadesSchema.countDocuments();
     const usuarios = await ActividadesSchema.find({}, 'odooUserId actividades')
       .limit(50)
       .lean();
-    
+
     const datosBasicos = usuarios.map(doc => ({
       odooUserId: doc.odooUserId,
       totalActividades: doc.actividades?.length || 0,
       totalTareas: doc.actividades?.reduce((sum, act) => sum + (act.pendientes?.length || 0), 0) || 0
     }));
-    
+
     return res.json({
       success: true,
       totalUsuarios: conteo,
       datos: datosBasicos,
       timestamp: new Date().toISOString()
     });
-    
+
   } catch (error) {
     console.error("Error en obtenerExplicacionesBasicas:", error);
     return res.status(500).json({
@@ -521,7 +521,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
           // Si la actividad ya existe, solo actualizar si es necesario
           if (actividadesMap.has(actividadId)) {
             const existente = actividadesMap.get(actividadId);
-            
+
             // Agregar usuario adicional si no existe
             if (!existente.usuarios.some(u => u.id === documento._id.toString())) {
               existente.usuarios.push({
@@ -541,7 +541,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
                 }
               });
             }
-            
+
             actividadesMap.set(actividadId, existente);
           } else {
             // Nueva actividad
@@ -556,7 +556,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
               colaboradores: actividad.colaboradoresEmails || [],
               idsColaboradores: actividad.IdColaboradoresEmails || [],
               totalColaboradores: (actividad.colaboradoresEmails || []).length,
-              
+
               usuarios: [{
                 id: documento._id.toString(),
                 odooUserId: documento.odooUserId,
@@ -564,7 +564,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
                 nombre: documento.nombreUsuario || `Usuario ${documento.odooUserId.substring(0, 6)}`
               }],
               totalUsuarios: 1,
-              
+
               tareas: [],
               totalTareas: 0,
               tareasConExplicacion: 0,
@@ -590,7 +590,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
                   fechaFinTerminada: pendiente.fechaFinTerminada,
                   tags: pendiente.tags || [],
                   requiereAtencion: pendiente.requiereAtencion || false,
-                  
+
                   tieneExplicacion: false,
                   explicacionActual: null,
                   historialExplicaciones: []
@@ -620,7 +620,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
                     razon: hist.razonIA || '',
                     sessionId: hist.sessionId
                   }));
-                  
+
                   if (!tareaData.tieneExplicacion && tareaData.historialExplicaciones.length > 0) {
                     nuevaActividad.tareasConExplicacion++;
                   }
@@ -630,7 +630,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
               });
 
               nuevaActividad.tareasSinExplicacion = nuevaActividad.totalTareas - nuevaActividad.tareasConExplicacion;
-              
+
               // Ordenar tareas: primero las que tienen explicacion
               nuevaActividad.tareas.sort((a, b) => {
                 if (a.tieneExplicacion && !b.tieneExplicacion) return -1;
@@ -670,5 +670,192 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
       message: 'Error interno del servidor',
       error: error.message
     });
+  }
+}
+// IMPORTANTE: Importar smartAICall al inicio del archivo
+
+
+import { smartAICall } from '../../src/libs/aiService.js';
+// import { smartAICall } from '../libs/aiService.js';
+
+/**
+ * Controlador para obtener todas las actividades con resúmenes ejecutivos por actividad
+ * @route GET /api/admin/todas-actividades
+ * @access Admin
+ */
+
+export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
+  try {
+    // Obtener todos los documentos
+    const todosLosDocumentos = await ActividadesSchema.find({}).lean();
+
+    // Usar un Map para evitar duplicados por actividadId
+    const actividadesMap = new Map();
+    let totalTareas = 0;
+    let totalActividadesUnicas = 0;
+
+    // Procesar cada documento
+    todosLosDocumentos.forEach((documento) => {
+      if (documento.actividades && Array.isArray(documento.actividades)) {
+        documento.actividades.forEach((actividad) => {
+          const actividadId = actividad.actividadId;
+
+          // Si la actividad ya existe, actualizar colaboradores
+          if (actividadesMap.has(actividadId)) {
+            const existente = actividadesMap.get(actividadId);
+
+            // Actualizar colaboradores si hay nuevos
+            if (actividad.colaboradoresEmails && actividad.colaboradoresEmails.length > 0) {
+              actividad.colaboradoresEmails.forEach(email => {
+                if (!existente.colaboradores.includes(email)) {
+                  existente.colaboradores.push(email);
+                }
+              });
+              existente.totalColaboradores = existente.colaboradores.length;
+            }
+
+            actividadesMap.set(actividadId, existente);
+          } else {
+            // Nueva actividad - SOLO DATOS BÁSICOS
+            const nuevaActividad = {
+              actividadId: actividad.actividadId,
+              titulo: actividad.titulo || 'Sin título',
+              proyecto: actividad.tituloProyecto || 'Sin proyecto',
+              fecha: actividad.fecha || 'Sin fecha',
+              horaInicio: actividad.horaInicio || '',
+              horaFin: actividad.horaFin || '',
+              status: actividad.status || 'Sin estado',
+              colaboradores: actividad.colaboradoresEmails || [],
+              totalColaboradores: (actividad.colaboradoresEmails || []).length,
+              totalTareas: actividad.pendientes?.length || 0,
+              tareasCompletadas: 0,
+              resumenEjecutivo: null
+            };
+
+            // Contar tareas completadas
+            if (actividad.pendientes && Array.isArray(actividad.pendientes)) {
+              totalTareas += actividad.pendientes.length;
+              actividad.pendientes.forEach((pendiente) => {
+                if (pendiente.terminada) {
+                  nuevaActividad.tareasCompletadas++;
+                }
+              });
+            }
+
+            actividadesMap.set(actividadId, nuevaActividad);
+          }
+        });
+      }
+    });
+
+    // Convertir Map a array
+    const todasLasActividades = Array.from(actividadesMap.values());
+    totalActividadesUnicas = todasLasActividades.length;
+
+    // Ordenar actividades por fecha (mas reciente primero)
+    todasLasActividades.sort((a, b) => {
+      if (a.fecha === 'Sin fecha') return 1;
+      if (b.fecha === 'Sin fecha') return -1;
+      return b.fecha.localeCompare(a.fecha);
+    });
+
+    // Generar resúmenes ejecutivos para CADA ACTIVIDAD
+    console.log(`Generando resúmenes ejecutivos para ${totalActividadesUnicas} actividades...`);
+
+    const actividadesConResumen = await Promise.all(
+      todasLasActividades.map(async (actividad) => {
+        try {
+          const resumenEjecutivo = await generarResumenEjecutivoActividad(actividad);
+          return {
+            ...actividad,
+            resumenEjecutivo
+          };
+        } catch (error) {
+          console.error(`Error generando resumen para actividad ${actividad.actividadId}:`, error);
+          return {
+            ...actividad,
+            resumenEjecutivo: {
+              texto: `Error al generar resumen.`,
+              tipo: 'error'
+            }
+          };
+        }
+      })
+    );
+
+    // Respuesta final - SOLO actividades con sus resúmenes
+    return res.json({
+      success: true,
+      metadata: {
+        totalActividadesUnicas: totalActividadesUnicas,
+        totalDocumentos: todosLosDocumentos.length,
+        totalTareas: totalTareas,
+        fechaGeneracion: new Date().toISOString()
+      },
+      actividades: actividadesConResumen
+    });
+
+  } catch (error) {
+    console.error('Error en obtenerTodasActividadesConExplicaciones:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error.message
+    });
+  }
+}
+
+/**
+ * Genera un resumen ejecutivo para UNA actividad específica
+ */
+async function generarResumenEjecutivoActividad(actividad) {
+  try {
+    // Prompt simplificado para resumen ejecutivo
+    const prompt = `
+Eres un asistente que genera resúmenes ejecutivos de actividades.
+
+ACTIVIDAD: ${actividad.titulo}
+FECHA: ${actividad.fecha}
+HORARIO: ${actividad.horaInicio} - ${actividad.horaFin}
+EQUIPO: ${actividad.colaboradores?.join(', ') || 'Sin colaboradores'}
+
+INSTRUCCIONES:
+Genera un resumen EJECUTIVO de 2-3 líneas que describa esta actividad.
+
+REGLAS:
+- Usa lenguaje natural y profesional
+- Máximo 200 caracteres
+- En español
+- Sin títulos ni viñetas
+
+RESPONDE SOLO CON EL TEXTO DEL RESUMEN.
+`;
+
+    const aiResult = await smartAICall(prompt);
+
+    if (!aiResult || !aiResult.text) {
+      throw new Error("La IA no generó respuesta");
+    }
+
+    const textoLimpio = aiResult.text
+      .trim()
+      .replace(/```/g, '')
+      .replace(/^["']|["']$/g, '')
+      .replace(/\n+/g, ' ')
+      .trim();
+
+    return {
+      texto: textoLimpio,
+      provider: aiResult.provider,
+      tipo: 'completo'
+    };
+
+  } catch (error) {
+    console.error('Error generando resumen ejecutivo:', error);
+    return {
+      texto: `Actividad: ${actividad.titulo} del ${actividad.fecha}.`,
+      provider: 'fallback',
+      tipo: 'basico'
+    };
   }
 }
