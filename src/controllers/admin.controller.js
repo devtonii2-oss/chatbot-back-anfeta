@@ -810,7 +810,7 @@ export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
  */
 async function generarResumenEjecutivoActividad(actividad) {
   try {
-    // Prompt simplificado para resumen ejecutivo
+    // Prompt simplificado para resumen
     const prompt = `
 Eres un asistente que genera resúmenes ejecutivos de actividades.
 
