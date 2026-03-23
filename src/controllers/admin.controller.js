@@ -674,9 +674,7 @@ export async function obtenerTodasActividadesConExplicaciones(req, res) {
 }
 // IMPORTANTE: Importar smartAICall al inicio del archivo
 
-
 import { smartAICall } from '../../src/libs/aiService.js';
-// import { smartAICall } from '../libs/aiService.js';
 
 /**
  * Controlador para obtener todas las actividades con resúmenes ejecutivos por actividad
@@ -700,11 +698,44 @@ export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
         documento.actividades.forEach((actividad) => {
           const actividadId = actividad.actividadId;
 
-          // Si la actividad ya existe, actualizar colaboradores
+          // Procesar tareas con explicaciones
+          const tareasProcesadas = (actividad.pendientes || []).map((pendiente) => {
+            let explicacionActual = null;
+            if (pendiente.historialExplicaciones && pendiente.historialExplicaciones.length > 0) {
+              const validas = pendiente.historialExplicaciones.filter(exp => exp.validada === true);
+              if (validas.length > 0) {
+                const ultima = validas[validas.length - 1];
+                explicacionActual = {
+                  texto: ultima.texto,
+                  fecha: ultima.fecha,
+                  email: ultima.email,
+                  validada: ultima.validada
+                };
+              } else {
+                const ultima = pendiente.historialExplicaciones[pendiente.historialExplicaciones.length - 1];
+                explicacionActual = {
+                  texto: ultima.texto,
+                  fecha: ultima.fecha,
+                  email: ultima.email,
+                  validada: ultima.validada || false
+                };
+              }
+            }
+
+            return {
+              pendienteId: pendiente.pendienteId,
+              nombre: pendiente.nombre || 'Sin nombre',
+              descripcion: pendiente.descripcion || '',
+              duracionMin: pendiente.duracionMin || 0,
+              prioridad: pendiente.prioridad || 'MEDIA',
+              terminada: pendiente.terminada || false,
+              tieneExplicacion: !!explicacionActual,
+              explicacionActual: explicacionActual
+            };
+          });
+
           if (actividadesMap.has(actividadId)) {
             const existente = actividadesMap.get(actividadId);
-
-            // Actualizar colaboradores si hay nuevos
             if (actividad.colaboradoresEmails && actividad.colaboradoresEmails.length > 0) {
               actividad.colaboradoresEmails.forEach(email => {
                 if (!existente.colaboradores.includes(email)) {
@@ -713,10 +744,8 @@ export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
               });
               existente.totalColaboradores = existente.colaboradores.length;
             }
-
             actividadesMap.set(actividadId, existente);
           } else {
-            // Nueva actividad - SOLO DATOS BÁSICOS
             const nuevaActividad = {
               actividadId: actividad.actividadId,
               titulo: actividad.titulo || 'Sin título',
@@ -727,63 +756,67 @@ export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
               status: actividad.status || 'Sin estado',
               colaboradores: actividad.colaboradoresEmails || [],
               totalColaboradores: (actividad.colaboradoresEmails || []).length,
-              totalTareas: actividad.pendientes?.length || 0,
-              tareasCompletadas: 0,
-              resumenEjecutivo: null
+              tareas: tareasProcesadas,
+              totalTareas: tareasProcesadas.length,
+              tareasCompletadas: tareasProcesadas.filter(t => t.terminada).length,
+              tareasConExplicacion: tareasProcesadas.filter(t => t.tieneExplicacion).length,
+              resumenPlaneado: null,   // LO QUE SE PLANEÓ
+              resumenEjecutado: null   // LO QUE SE HIZO
             };
-
-            // Contar tareas completadas
-            if (actividad.pendientes && Array.isArray(actividad.pendientes)) {
-              totalTareas += actividad.pendientes.length;
-              actividad.pendientes.forEach((pendiente) => {
-                if (pendiente.terminada) {
-                  nuevaActividad.tareasCompletadas++;
-                }
-              });
-            }
-
+            totalTareas += tareasProcesadas.length;
             actividadesMap.set(actividadId, nuevaActividad);
           }
         });
       }
     });
 
-    // Convertir Map a array
     const todasLasActividades = Array.from(actividadesMap.values());
     totalActividadesUnicas = todasLasActividades.length;
 
-    // Ordenar actividades por fecha (mas reciente primero)
+    // Ordenar actividades por fecha
     todasLasActividades.sort((a, b) => {
       if (a.fecha === 'Sin fecha') return 1;
       if (b.fecha === 'Sin fecha') return -1;
       return b.fecha.localeCompare(a.fecha);
     });
 
-    // Generar resúmenes ejecutivos para CADA ACTIVIDAD
-    console.log(`Generando resúmenes ejecutivos para ${totalActividadesUnicas} actividades...`);
+    console.log(`Generando resúmenes para ${totalActividadesUnicas} actividades...`);
 
-    const actividadesConResumen = await Promise.all(
-      todasLasActividades.map(async (actividad) => {
-        try {
-          const resumenEjecutivo = await generarResumenEjecutivoActividad(actividad);
-          return {
-            ...actividad,
-            resumenEjecutivo
-          };
-        } catch (error) {
-          console.error(`Error generando resumen para actividad ${actividad.actividadId}:`, error);
-          return {
-            ...actividad,
-            resumenEjecutivo: {
-              texto: `Error al generar resumen.`,
-              tipo: 'error'
-            }
-          };
-        }
-      })
-    );
+    const actividadesConResumen = [];
+    
+    // Procesar una por una para evitar rate limit
+    for (let i = 0; i < todasLasActividades.length; i++) {
+      const actividad = todasLasActividades[i];
+      
+      try {
+        // Generar ambos resúmenes en secuencia (no en paralelo)
+        const resumenPlaneado = await generarResumenPlaneado(actividad);
+        
+        // Pequeña pausa entre llamadas
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        const resumenEjecutado = await generarResumenEjecutado(actividad);
+        
+        actividadesConResumen.push({
+          ...actividad,
+          resumenPlaneado,
+          resumenEjecutado
+        });
+      } catch (error) {
+        console.error(`Error generando resúmenes para actividad ${actividad.actividadId}:`, error);
+        actividadesConResumen.push({
+          ...actividad,
+          resumenPlaneado: { texto: `Error: ${error.message}`, tipo: 'error' },
+          resumenEjecutado: { texto: `Error: ${error.message}`, tipo: 'error' }
+        });
+      }
+      
+      // Pausa entre actividades
+      if (i < todasLasActividades.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
 
-    // Respuesta final - SOLO actividades con sus resúmenes
     return res.json({
       success: true,
       metadata: {
@@ -806,56 +839,95 @@ export async function obtenerTodasActividadesConExplicacionesIa(req, res) {
 }
 
 /**
- * Genera un resumen ejecutivo para UNA actividad específica
+ * Genera resumen de LO QUE SE PLANEÓ hacer
  */
-async function generarResumenEjecutivoActividad(actividad) {
-  try {
-    // Prompt simplificado para resumen
-    const prompt = `
-Eres un asistente que genera resúmenes ejecutivos de actividades.
+async function generarResumenPlaneado(actividad) {
+  const colaboradoresNombres = actividad.colaboradores?.map(c => c.split('@')[0]).join(', ') || 'Sin colaboradores';
+  const fechaFormateada = new Date(actividad.fecha).toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  
+  const tareasPlaneadas = actividad.tareas
+    ?.filter(t => t.descripcion)
+    .map(t => `- ${t.nombre}: ${t.descripcion}`)
+    .join('\n') || 'No hay tareas planeadas';
+  
+  const prompt = `
+Genera un resumen de LO QUE SE PLANEÓ HACER en esta actividad:
 
 ACTIVIDAD: ${actividad.titulo}
-FECHA: ${actividad.fecha}
-HORARIO: ${actividad.horaInicio} - ${actividad.horaFin}
-EQUIPO: ${actividad.colaboradores?.join(', ') || 'Sin colaboradores'}
+FECHA: ${fechaFormateada}
+HORARIO: ${actividad.horaInicio || 'N/A'} - ${actividad.horaFin || 'N/A'}
+EQUIPO: ${colaboradoresNombres}
+
+TAREAS PLANEADAS:
+${tareasPlaneadas}
 
 INSTRUCCIONES:
-Genera un resumen EJECUTIVO de 2-3 líneas que describa esta actividad.
-
-REGLAS:
-- Usa lenguaje natural y profesional
-- Máximo 200 caracteres
-- En español
-- Sin títulos ni viñetas
+Resume en 2-3 líneas qué se planeó hacer, mencionando las tareas principales y los colaboradores.
 
 RESPONDE SOLO CON EL TEXTO DEL RESUMEN.
 `;
 
-    const aiResult = await smartAICall(prompt);
+  const aiResult = await smartAICall(prompt);
 
-    if (!aiResult || !aiResult.text) {
-      throw new Error("La IA no generó respuesta");
-    }
-
-    const textoLimpio = aiResult.text
-      .trim()
-      .replace(/```/g, '')
-      .replace(/^["']|["']$/g, '')
-      .replace(/\n+/g, ' ')
-      .trim();
-
-    return {
-      texto: textoLimpio,
-      provider: aiResult.provider,
-      tipo: 'completo'
-    };
-
-  } catch (error) {
-    console.error('Error generando resumen ejecutivo:', error);
-    return {
-      texto: `Actividad: ${actividad.titulo} del ${actividad.fecha}.`,
-      provider: 'fallback',
-      tipo: 'basico'
-    };
+  if (!aiResult || !aiResult.text) {
+    throw new Error("La IA no generó respuesta");
   }
+
+  return {
+    texto: aiResult.text.trim().replace(/\n+/g, ' '),
+    provider: aiResult.provider,
+    tipo: 'planeado'
+  };
+}
+
+/**
+ * Genera resumen de LO QUE REALMENTE SE HIZO
+ */
+async function generarResumenEjecutado(actividad) {
+  const colaboradoresNombres = actividad.colaboradores?.map(c => c.split('@')[0]).join(', ') || 'Sin colaboradores';
+  const fechaFormateada = new Date(actividad.fecha).toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  
+  const tareasEjecutadas = actividad.tareas
+    ?.filter(t => t.explicacionActual?.texto)
+    .map(t => `- ${t.nombre} (${t.terminada ? 'COMPLETADA' : 'PENDIENTE'}): ${t.explicacionActual.texto}`)
+    .join('\n') || 'No hay registros de lo realizado';
+  
+  const prompt = `
+Genera un resumen de LO QUE REALMENTE SE HIZO en esta actividad:
+
+ACTIVIDAD: ${actividad.titulo}
+FECHA: ${fechaFormateada}
+HORARIO: ${actividad.horaInicio || 'N/A'} - ${actividad.horaFin || 'N/A'}
+EQUIPO: ${colaboradoresNombres}
+
+LO QUE SE EJECUTÓ:
+${tareasEjecutadas}
+
+RESULTADOS: ${actividad.tareasCompletadas || 0} de ${actividad.totalTareas || 0} tareas completadas
+
+INSTRUCCIONES:
+Resume en 3-4 líneas qué se hizo realmente, mencionando las tareas completadas, quiénes las realizaron, y si hubo pendientes o complicaciones.
+
+RESPONDE SOLO CON EL TEXTO DEL RESUMEN.
+`;
+
+  const aiResult = await smartAICall(prompt);
+
+  if (!aiResult || !aiResult.text) {
+    throw new Error("La IA no generó respuesta");
+  }
+
+  return {
+    texto: aiResult.text.trim().replace(/\n+/g, ' '),
+    provider: aiResult.provider,
+    tipo: 'ejecutado'
+  };
 }
